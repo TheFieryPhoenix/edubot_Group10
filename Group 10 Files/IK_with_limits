@@ -2,6 +2,48 @@ import math
 import sympy as sp
 
 # ==========================================
+# 0. JOINT LIMITS CONFIGURATION
+# ==========================================
+# Limits defined in degrees: [min, max]
+JOINT_LIMITS_DEG = {
+    'q1': (-135, 135), # R1
+    'q2': (-90, 90),   # R2
+    'q3': (-90, 90),   # R3
+    'q4': (-90, 90),   # R4
+    'q5': (-180, 180), # R5
+    'Re': (0, 90)      # Gripper / End-effector
+}
+
+# Convert limits to radians for internal computation
+JOINT_LIMITS_RAD = {
+    key: (math.radians(min_deg), math.radians(max_deg))
+    for key, (min_deg, max_deg) in JOINT_LIMITS_DEG.items()
+}
+
+def validate_joint_limits(q_vals):
+    """
+    Checks if the computed joint angles are within the hardware limits.
+    Raises a ValueError if any joint exceeds its defined boundaries.
+    """
+    joint_names = ['q1', 'q2', 'q3', 'q4', 'q5']
+    
+    for i, q in enumerate(q_vals):
+        name = joint_names[i]
+        min_rad, max_rad = JOINT_LIMITS_RAD[name]
+        
+        # Normalize angle to be within -pi to pi for accurate comparison
+        q_norm = (q + math.pi) % (2 * math.pi) - math.pi
+        
+        if not (min_rad <= q_norm <= max_rad):
+            min_deg, max_deg = JOINT_LIMITS_DEG[name]
+            calc_deg = math.degrees(q_norm)
+            raise ValueError(
+                f"Joint {name} out of bounds: Calculated {calc_deg:.2f}°, "
+                f"but limits are [{min_deg}°, {max_deg}°]."
+            )
+    return q_vals
+
+# ==========================================
 # 1. FORWARD KINEMATICS HELPER FUNCTIONS
 # ==========================================
 def rotx(a):
@@ -67,7 +109,7 @@ def get_symbolic_fk():
 def compute_inverse_kinematics(X, Y, Z, theta_pitch=0.0, roll=0.0):
     """
     Calculates the joint angles (q1 to q5) for a 5-DOF robotic arm 
-    to reach a target Cartesian coordinate.
+    to reach a target Cartesian coordinate, respecting joint limits.
     """
     # --- Step 1: Link Lengths ---
     l2 = 0.1160 # Upper arm length
@@ -114,57 +156,65 @@ def compute_inverse_kinematics(X, Y, Z, theta_pitch=0.0, roll=0.0):
     q4 = theta_pitch - q2 - q3
     q5 = roll
 
-    return [q1, q2, q3, q4, q5]
+    q_vals = [q1, q2, q3, q4, q5]
+    
+    # --- Step 7: Enforce Hardware Limits ---
+    return validate_joint_limits(q_vals)
 
 # ==========================================
 # 3. VERIFICATION SCRIPT
 # ==========================================
 def main():
     # --- Define Targets ---
-    target_X = 0.2
-    target_Y = 0.1
-    target_Z = 0.4
-    target_pitch = 0.0
-    target_roll = 1.57
-    
-    
+    target_X = 0.0
+    target_Y = 0.0452
+    target_Z = 0.45
+    target_pitch = 0.785
+    target_roll = 3.141
+ 
     print("--------------------------------------------------")
     print(f" Target Point: X={target_X}, Y={target_Y}, Z={target_Z}, Pitch={target_pitch}, Roll={target_roll}")
     print("--------------------------------------------------")
     
     # --- 1. Compute Inverse Kinematics ---
-    q_vals = compute_inverse_kinematics(target_X, target_Y, target_Z, target_pitch, target_roll)
-    
-    print("\n Computed Joint Angles (radians) via IK:")
-    for i, angle in enumerate(q_vals):
-        print(f"  q{i+1}: {angle:.4f} rad ({math.degrees(angle):.2f}°)")
+    try:
+        q_vals = compute_inverse_kinematics(target_X, target_Y, target_Z, target_pitch, target_roll)
         
-    # --- 2. Build Symbolic FK and Verify ---
-    print("\n  Building Symbolic Forward Kinematics (this may take a second)...")
-    pos_expr, q_syms = get_symbolic_fk()
-    
-    # Create substitution dictionary: {q1: q_vals[0], q2: q_vals[1], ...}
-    subs_dict = {q_syms[i]: q_vals[i] for i in range(5)}
-    
-    # Substitute values into FK equations
-    print(" Testing computed angles in Forward Kinematics...")
-    fk_result = pos_expr.subs(subs_dict)
-    
-    # Format and compare results
-    fk_X = float(fk_result[0])
-    fk_Y = float(fk_result[1])
-    fk_Z = float(fk_result[2])
-    
-    print("\n--------------------------------------------------")
-    print(" Forward Kinematics Verification Result:")
-    print("--------------------------------------------------")
-    print(f"Target X: {target_X:.4f}  |  FK X: {fk_X:.4f}")
-    print(f"Target Y: {target_Y:.4f}  |  FK Y: {fk_Y:.4f}")
-    print(f"Target Z: {target_Z:.4f}  |  FK Z: {fk_Z:.4f}")
-    
-    # Error checking
-    error = math.sqrt((target_X - fk_X)**2 + (target_Y - fk_Y)**2 + (target_Z - fk_Z)**2)
-    print(f"\nTotal Position Error (Euclidean Distance): {error:.6f} m")
+        print("\n Computed Joint Angles (radians) via IK:")
+        for i, angle in enumerate(q_vals):
+            # Normalize for display
+            angle_norm = (angle + math.pi) % (2 * math.pi) - math.pi
+            print(f"  q{i+1}: {angle_norm:.4f} rad ({math.degrees(angle_norm):.2f}°)")
+            
+        # --- 2. Build Symbolic FK and Verify ---
+        print("\n  Building Symbolic Forward Kinematics (this may take a second)...")
+        pos_expr, q_syms = get_symbolic_fk()
+        
+        # Create substitution dictionary: {q1: q_vals[0], q2: q_vals[1], ...}
+        subs_dict = {q_syms[i]: q_vals[i] for i in range(5)}
+        
+        # Substitute values into FK equations
+        print(" Testing computed angles in Forward Kinematics...")
+        fk_result = pos_expr.subs(subs_dict)
+        
+        # Format and compare results
+        fk_X = float(fk_result[0])
+        fk_Y = float(fk_result[1])
+        fk_Z = float(fk_result[2])
+        
+        print("\n--------------------------------------------------")
+        print(" Forward Kinematics Verification Result:")
+        print("--------------------------------------------------")
+        print(f"Target X: {target_X:.4f}  |  FK X: {fk_X:.4f}")
+        print(f"Target Y: {target_Y:.4f}  |  FK Y: {fk_Y:.4f}")
+        print(f"Target Z: {target_Z:.4f}  |  FK Z: {fk_Z:.4f}")
+        
+        # Error checking
+        error = math.sqrt((target_X - fk_X)**2 + (target_Y - fk_Y)**2 + (target_Z - fk_Z)**2)
+        print(f"\nTotal Position Error (Euclidean Distance): {error:.6f} m")
+        
+    except ValueError as e:
+        print(f"\n ERROR: {e}")
 
 if __name__ == "__main__":
     main()
