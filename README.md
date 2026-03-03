@@ -106,6 +106,13 @@ Once the package is compiled, source by calling:
 
 You can run start the simulation or the driver for the robot with the following commands.
 
+### Updating
+The packages are continually being updated, so be sure to update every once in a while by calling 
+```
+git submodule update --recursive
+git pull
+```
+
 **Launch files (lerobot package)**
 
 | Command | Effect |
@@ -150,6 +157,16 @@ Log in and log out user account and then try again. Don't forget to source.
 **Important**: If the USB still cannot be read, unplug everything and kill all ROS processes, (1) power the virtual machine, (2) power ON the robot emergency switch, (3) plug in the USB connector, (4) plug in power for motors.
 
 Example implementation can be found [here](https://www.youtube.com/watch?v=h-EOHbVqsJg).
+
+## Troubleshooting
+### BRLTTY
+There is a package that sometimes is installed automatically with Ubuntu called `brltty`, which interferes with servo driver. You can remove it by calling 
+```
+sudo apt purge brltty
+```
+
+### Wrong baud rate or USB port
+In the config (`lerobot\config\robot_hw.yaml`), the USB port name is defined along with the baud rate. You can check which USB port is assigned by calling `ls /dev/ttyUSB*`. This should correspond to the serial port name defined in the yaml file. Rebuild to make config changes take effect.
 
 ## Issues
 
