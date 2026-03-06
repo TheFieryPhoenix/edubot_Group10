@@ -1,0 +1,14 @@
+digraph G {
+"upper_arm" -> "lower_arm"[label=" Broadcaster: default_authority\nAverage rate: 100.198\nBuffer length: 5.06\nMost recent transform: 1772801321.256421\nOldest transform: 1772801316.196438\n"];
+"shoulder" -> "upper_arm"[label=" Broadcaster: default_authority\nAverage rate: 100.198\nBuffer length: 5.06\nMost recent transform: 1772801321.256421\nOldest transform: 1772801316.196438\n"];
+"gripper" -> "jaw"[label=" Broadcaster: default_authority\nAverage rate: 100.198\nBuffer length: 5.06\nMost recent transform: 1772801321.256421\nOldest transform: 1772801316.196438\n"];
+"wrist" -> "gripper"[label=" Broadcaster: default_authority\nAverage rate: 100.198\nBuffer length: 5.06\nMost recent transform: 1772801321.256421\nOldest transform: 1772801316.196438\n"];
+"base" -> "shoulder"[label=" Broadcaster: default_authority\nAverage rate: 100.198\nBuffer length: 5.06\nMost recent transform: 1772801321.256421\nOldest transform: 1772801316.196438\n"];
+"world" -> "base"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+"lower_arm" -> "wrist"[label=" Broadcaster: default_authority\nAverage rate: 100.198\nBuffer length: 5.06\nMost recent transform: 1772801321.256421\nOldest transform: 1772801316.196438\n"];
+"gripper" -> "gripper_center"[label=" Broadcaster: default_authority\nAverage rate: 10000.0\nBuffer length: 0.0\nMost recent transform: 0.0\nOldest transform: 0.0\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1772801321.2711337"[ shape=plaintext ] ;
+}->"world";
+}

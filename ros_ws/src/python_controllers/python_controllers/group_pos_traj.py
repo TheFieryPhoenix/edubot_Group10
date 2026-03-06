@@ -3,6 +3,8 @@ import numpy as np
 import math
 from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import Point
 
 
 # INVERSE KINEMATICS & LIMITS
@@ -79,6 +81,51 @@ def compute_inverse_kinematics(X, Y, Z, theta_pitch=None, roll=0.0):
     raise ValueError("Target is totally out of reach for all safe angles.")
 
 
+# ---------- Forward Kinematics (numeric) ----------
+
+def rot_z_np(a):
+    ca, sa = math.cos(a), math.sin(a)
+    return np.array([[ca, -sa, 0, 0],
+                     [sa, ca, 0, 0],
+                     [0, 0, 1, 0],
+                     [0, 0, 0, 1]])
+
+
+def thin_tform_np(pos, rpy):
+    rx, ry, rz = rpy
+    # roll-pitch-yaw order: x then y then z rotation
+    cx, sx = math.cos(rx), math.sin(rx)
+    cy, sy = math.cos(ry), math.sin(ry)
+    cz, sz = math.cos(rz), math.sin(rz)
+
+    Rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+    Ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+    Rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+    R = Rz.dot(Ry).dot(Rx)
+
+    T = np.eye(4)
+    T[:3, :3] = R
+    T[:3, 3] = pos
+    return T
+
+
+def forward_kinematics(q_vals):
+    # use same constants as symbolic derivation
+    q1, q2, q3, q4, q5 = q_vals
+    T_world_base = thin_tform_np([0, 0, 0], [0, 0, math.pi])
+    T_base_shldr = thin_tform_np([0, -0.0452, 0.0165], [0, 0, 0]).dot(rot_z_np(q1))
+    T_shldr_upper = thin_tform_np([0, -0.0306, 0.1025], [0, -1.57079, 0]).dot(rot_z_np(q2))
+    T_upper_lower = thin_tform_np([0.11257, -0.028, 0], [0, 0, 0]).dot(rot_z_np(q3))
+    T_lower_wrist = thin_tform_np([0.0052, -0.1349, 0], [0, 0, math.pi/2]).dot(rot_z_np(q4))
+    T_wrist_grip = thin_tform_np([-0.0601, 0, 0], [0, -math.pi/2, 0]).dot(rot_z_np(q5))
+    T_grip_center = thin_tform_np([0, 0, 0.075], [0, 0, 0])
+
+    T_fk = (T_world_base.dot(T_base_shldr).dot(T_shldr_upper)
+            .dot(T_upper_lower).dot(T_lower_wrist)
+            .dot(T_wrist_grip).dot(T_grip_center))
+    return T_fk[:3, 3]
+
+
 # ==========================================
 # ROS 2 NODE
 # ==========================================
@@ -89,7 +136,22 @@ class ExampleTraj(Node):
 
         self._beginning = self.get_clock().now()
         self._publisher = self.create_publisher(JointTrajectory, 'joint_cmds', 10)
-        
+
+        # marker publisher for end-effector trace
+        self._marker_pub = self.create_publisher(Marker, 'fk_ee', 10)
+        self._marker = Marker()
+        self._marker.header.frame_id = 'world'
+        self._marker.ns = 'ee_trace'
+        self._marker.id = 0
+        self._marker.type = Marker.LINE_STRIP
+        self._marker.action = Marker.ADD
+        self._marker.scale.x = 0.005
+        self._marker.color.r = 1.0
+        self._marker.color.g = 0.0
+        self._marker.color.b = 0.0
+        self._marker.color.a = 1.0
+        self._marker.points = []
+
         self.cycle_time = 20.0 
         
         # --- Vertical Square Configuration (X, Y, Z) ---
@@ -142,7 +204,17 @@ class ExampleTraj(Node):
             msg.points = [point]
 
             self._publisher.publish(msg)
-            
+            # publish marker trace
+            ee_pos = forward_kinematics(q_vals)
+            p = Point()
+            p.x, p.y, p.z = float(ee_pos[0]), float(ee_pos[1]), float(ee_pos[2])
+            self._marker.points.append(p)
+            # limit the number of points to prevent memory issues
+            if len(self._marker.points) > 1000:
+                self._marker.points.pop(0)
+            self._marker.header.stamp = now.to_msg()
+            self._marker_pub.publish(self._marker)
+
         except ValueError as e:
             self.get_logger().warn(f"IK Error at X={target_xyz[0]:.3f}, Y={target_xyz[1]:.3f}, Z={target_xyz[2]:.3f}: {e}")
 
