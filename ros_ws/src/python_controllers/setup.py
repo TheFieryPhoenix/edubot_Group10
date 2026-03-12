@@ -24,6 +24,7 @@ setup(
             'example_vel_traj = python_controllers.example_vel_traj:main',
             'group_pos_traj = python_controllers.group_pos_traj:main',
             'group_vel_traj = python_controllers.group_vel_traj:main',
+            'pickup_traj = python_controllers.pickup_traj:main',
         ],
     },
 )
