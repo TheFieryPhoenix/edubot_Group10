@@ -124,7 +124,7 @@ def get_symbolic_jacobian():
     Jw = sp.Matrix.hstack(z1,z2,z3,z4,z5)
 
     J = sp.Matrix.vstack(Jv, Jw)
-    return sp.simplify(J), sp.simplify(Jv), sp.simplify(Jw), q
+    return J, Jv, Jw, q
 
 # ----------------------------
 # Numeric helpers
@@ -143,8 +143,10 @@ def fk_position_numeric_func():
 
 def jv_position_numeric_func():
     """Lambdified linear Jacobian Jv (3x5) – used only for startup IK solving."""
-    _, Jv, _, q = get_symbolic_jacobian()
-    return sp.lambdify(q, Jv, modules="numpy")
+    T_sym, q_syms = get_symbolic_T_world_gc()
+    p_sym = T_sym[:3, 3]
+    Jv_sym = p_sym.jacobian(sp.Matrix(q_syms))
+    return sp.lambdify(q_syms, Jv_sym, modules="numpy")
 
 
 def ik_solve_position(p_target, q_init, fk_func, jv_func,
@@ -236,6 +238,8 @@ class ExampleTraj(Node):
         self._init_done = False
         self._init_tol = np.deg2rad(1.0)
         self._init_kp = 1.5
+        self._post_home_settle_sec = 1.0
+        self._home_done_time = None
         self._move_phase_timeout = 12.0
         self._sequence_started = False
         self._phase_index = 0
@@ -438,8 +442,9 @@ class ExampleTraj(Node):
             if np.max(np.abs(q_err)) < self._init_tol:
                 self._init_done = True
                 self._beginning = now
+                self._home_done_time = now
                 self.get_logger().info(
-                    'homing complete; starting Cartesian velocity trajectory')
+                    'homing complete; settling 1.0s before trajectory start')
             else:
                 dq_home = clamp_vec(self._init_kp * q_err, 0.8)
                 dq_home = gate_vel_at_limits(self._q, dq_home)
@@ -449,6 +454,18 @@ class ExampleTraj(Node):
                 msg.points = [point]
                 self._publisher.publish(msg)
                 return
+
+        # one-time 1s settle right after homing, then continue as before
+        if self._home_done_time is not None:
+            settle_elapsed = (now - self._home_done_time).nanoseconds * 1e-9
+            if settle_elapsed < self._post_home_settle_sec:
+                for _ in range(len(self._HOME)):
+                    point.velocities.append(0.0)
+                point.velocities.append(0.0)
+                msg.points = [point]
+                self._publisher.publish(msg)
+                return
+            self._home_done_time = None
 
         # desired end-effector twist (vx,vy,vz, wx,wy,wz)
         p_now = np.array(self._fk_func(*self._q), dtype=float).reshape(3)
