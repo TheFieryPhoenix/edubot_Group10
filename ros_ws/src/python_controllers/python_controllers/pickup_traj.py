@@ -448,7 +448,7 @@ class ExampleTraj(Node):
             for i in range(self._num_pickups)
         ]
 
-        self.get_logger().info('solving IK_with_limits-consistent waypoints…')
+        self.get_logger().info('solving numerical IK waypoints…')
         phases = [
             {'type': 'grip',
              'gripper_vel': self._gripper_open_vel,
@@ -456,41 +456,31 @@ class ExampleTraj(Node):
              'label':       'open gripper'},
         ]
 
+        def solve_numeric_waypoint(p_target, q_seed):
+            q_sol = ik_solve_position(
+                np.asarray(p_target, dtype=float),
+                np.asarray(q_seed, dtype=float),
+                self._fk_func,
+                self._Jv_func,
+                max_iter=300,
+                tol=8e-4,
+                lam=2e-2,
+            )
+            q_sol = clamp_q_to_limits(q_sol)
+            q_sol[4] = float(self._HOME[4])
+            return validate_joint_limits(q_sol)
+
         for i, (pickup, dropoff) in enumerate(zip(pickups, dropoffs), start=1):
             pickup_above = pickup + np.array([0.0, 0.0, self._clearance])
             dropoff_above = dropoff + np.array([0.0, 0.0, self._clearance])
             transit_waypoint = 0.5 * (pickup_above + dropoff_above) + np.array([0.0, 0.0, 0.03])
 
-            q_above = compute_inverse_kinematics_consistent(
-                float(pickup_above[0]), float(pickup_above[1]), float(pickup_above[2]),
-                theta_pitch=None,
-                preferred_pitch=-1.5,
-                roll=float(self._HOME[4])
-            )
-            q_pick = compute_inverse_kinematics_consistent(
-                float(pickup[0]), float(pickup[1]), float(pickup[2]),
-                theta_pitch=None,
-                preferred_pitch=-1.55,
-                roll=float(self._HOME[4])
-            )
-            q_drop_above = compute_inverse_kinematics_consistent(
-                float(dropoff_above[0]), float(dropoff_above[1]), float(dropoff_above[2]),
-                theta_pitch=None,
-                preferred_pitch=-1.5,
-                roll=float(self._HOME[4])
-            )
-            q_drop = compute_inverse_kinematics_consistent(
-                float(dropoff[0]), float(dropoff[1]), float(dropoff[2]),
-                theta_pitch=None,
-                preferred_pitch=-1.55,
-                roll=float(self._HOME[4])
-            )
-            q_transit = compute_inverse_kinematics_consistent(
-                float(transit_waypoint[0]), float(transit_waypoint[1]), float(transit_waypoint[2]),
-                theta_pitch=None,
-                preferred_pitch=-1.5,
-                roll=float(self._HOME[4])
-            )
+            q_seed = self._q.copy()
+            q_above = solve_numeric_waypoint(pickup_above, q_seed)
+            q_pick = solve_numeric_waypoint(pickup, q_above)
+            q_drop_above = solve_numeric_waypoint(dropoff_above, q_pick)
+            q_drop = solve_numeric_waypoint(dropoff, q_drop_above)
+            q_transit = solve_numeric_waypoint(transit_waypoint, q_drop)
 
             p_pick_chk = np.array(self._fk_func(*q_pick), dtype=float).reshape(3)
             p_drop_chk = np.array(self._fk_func(*q_drop), dtype=float).reshape(3)
