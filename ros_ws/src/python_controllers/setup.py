@@ -29,7 +29,8 @@ setup(
             'group_vel_traj = python_controllers.group_vel_traj:main',
             'pickup_traj = python_controllers.pickup_traj:main',
             'kinematics_utils = python_controllers.kinematics_utils:main',
-            'square_trajectory_node = python_controllers.square_trajectory_node:main'
+            'square_trajectory_node = python_controllers.square_trajectory_node:main',
+            'pick_and_place = python_controllers.pick_and_place:main'
         ],
     },
 )
