@@ -190,7 +190,7 @@ JOINT_LIMITS_RAD = np.array([
 ], dtype=float)
 
 class TrajPublisher(Node):
-    def __init__(self, traj, dt=0.04):
+    def __init__(self, traj, dt=0.04, joint_offset=None):
         super().__init__('traj_publisher')
         self.traj = traj
         self.dt = dt
@@ -212,6 +212,11 @@ class TrajPublisher(Node):
         self._trace_marker.color.g = 0.8
         self._trace_marker.color.b = 1.0
         self._trace_marker.color.a = 1.0
+        # Joint offset (for real robot calibration)
+        if joint_offset is None:
+            self.joint_offset = np.zeros(6)
+        else:
+            self.joint_offset = np.array(joint_offset, dtype=float)
 
     def publish_next(self):
         if self.startup:
@@ -235,7 +240,9 @@ class TrajPublisher(Node):
                 self.idx += 1
         msg = JointTrajectory()
         pt = JointTrajectoryPoint()
-        pt.positions = list(q)
+        # Apply joint offset before publishing
+        q_cmd = np.array(q, dtype=float) - self.joint_offset
+        pt.positions = list(q_cmd)
         pt.time_from_start = Duration(sec=0, nanosec=int(self.dt*1e9))
         msg.points = [pt]
         self.pub.publish(msg)
@@ -339,7 +346,8 @@ def run_trajectory():
     ]
     dt = 0.04
     traj = build_joint_traj_from_cartesian(q_home, cartesian_waypoints, steps_per_segment=50)
-    node = TrajPublisher(traj, dt=dt)
+    joint_offset = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # Change these values to calibrate real robot offsets
+    node = TrajPublisher(traj, dt=dt, joint_offset=joint_offset)
     rclpy.spin(node)
     rclpy.shutdown()
 
