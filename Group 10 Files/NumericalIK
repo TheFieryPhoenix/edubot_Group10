@@ -1,3 +1,61 @@
+# =========================================================
+# 9) FIND POSES WITH MULTIPLE IK SOLUTIONS
+# =========================================================
+def find_poses_with_multiple_solutions(bounds=None, tol=1e-2):
+    poses = {
+        "I":   [0.2, 0.2,    0.2,    0.000,  1.570,  0.650],
+        "II":  [0.2, 0.1,    0.4,    0.000,  0.000, -1.570],
+        "III": [0.0, 0.0,    0.4,    0.000, -0.785,  1.570],
+        "IV":  [0.0, 0.0,    0.07,   3.141,  0.000,  0.000],
+        "V":   [0.0, 0.0452, 0.45,  -0.785,  0.000,  3.141],
+    }
+    seeds = [
+        np.array([0, 0, 0, 0, 0], dtype=float),
+        np.array([ np.pi/2, 0, 0, 0, 0], dtype=float),
+        np.array([-np.pi/2, 0, 0, 0, 0], dtype=float),
+        np.array([0,  np.pi/4, -np.pi/4, 0, 0], dtype=float),
+        np.array([0, -np.pi/4,  np.pi/4, 0, 0], dtype=float),
+        np.array([0,  np.pi/2, 0, 0, 0], dtype=float),
+        np.array([0, -np.pi/2, 0, 0, 0], dtype=float),
+        np.array([np.pi, 0, 0, 0, 0], dtype=float),
+        np.array([-np.pi, 0, 0, 0, 0], dtype=float),
+    ]
+    print("\n========== SEARCHING FOR MULTIPLE IK SOLUTIONS ==========")
+    for name, pose in poses.items():
+        solutions = []
+        for seed in seeds:
+            # Clip seed to bounds if bounds are provided
+            clipped_seed = seed.copy()
+            if bounds is not None:
+                lower = np.array([b[0] for b in bounds], dtype=float)
+                upper = np.array([b[1] for b in bounds], dtype=float)
+                clipped_seed = np.clip(clipped_seed, lower, upper)
+            try:
+                q_sol, info, result = inverse_kinematics_pose5(
+                    target_pose=pose,
+                    initial_guess=clipped_seed,
+                    bounds=bounds
+                )
+            except ValueError as e:
+                # Skip infeasible seeds
+                continue
+            if info["feasible"]:
+                # Check if this solution is distinct from previous ones
+                is_new = True
+                for q_prev in solutions:
+                    # Use np.unwrap to handle angle wrapping
+                    if np.linalg.norm(np.unwrap(q_sol - q_prev)) < tol:
+                        is_new = False
+                        break
+                if is_new:
+                    solutions.append(q_sol)
+        if len(solutions) > 1:
+            print(f"\nPose {name} has multiple ({len(solutions)}) solutions:")
+            for idx, q in enumerate(solutions):
+                print(f"  Solution {idx+1}: {np.round(q, 5)}")
+        else:
+            print(f"\nPose {name} has a unique solution.")
+
 import sympy as sp
 import numpy as np
 from scipy.optimize import least_squares
@@ -88,6 +146,7 @@ sp.pprint(p_fk.subs(test_cfg).evalf(6))
 # =========================================================
 fk_pos_func = sp.lambdify((q1, q2, q3, q4, q5), p_fk, "numpy")
 fk_rot_func = sp.lambdify((q1, q2, q3, q4, q5), R_fk, "numpy")
+
 
 # Use tool z-axis for the 2 orientation DoFs
 z_tool_sym = R_fk[:, 2]
@@ -385,3 +444,6 @@ if __name__ == "__main__":
 
     print("\n========== TASK 2.1 TEST RESULTS ==========")
     print_assignment_results(results)
+
+    # Find and print poses with multiple solutions
+    find_poses_with_multiple_solutions(bounds=bounds)

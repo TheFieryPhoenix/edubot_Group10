@@ -259,7 +259,7 @@ class TrajPublisher(Node):
         self._marker_pub.publish(self._trace_marker)
 
 # --- Cartesian Trajectory Generation ---
-def interpolate_cartesian_traj(waypoints, steps_per_segment=50):
+def interpolate_cartesian_traj(waypoints, steps_per_segment=10):
     """
     waypoints: list of (x, y, z, rot1, rot2)
     Returns: list of poses interpolated between waypoints
@@ -274,14 +274,23 @@ def interpolate_cartesian_traj(waypoints, steps_per_segment=50):
     return poses
 
 # --- Build Joint Trajectory from Cartesian Waypoints ---
-def build_joint_traj_from_cartesian(home_q, cartesian_waypoints, steps_per_segment=50):
+def build_joint_traj_from_cartesian(home_q, cartesian_waypoints, steps_per_segment=200):
     poses = interpolate_cartesian_traj(cartesian_waypoints, steps_per_segment)
     traj = [home_q.copy()]
     q_seed = home_q.copy()
+    pause_steps = 0  # Number of steps to pause at each waypoint (adjust as needed)
+    n_waypoints = len(cartesian_waypoints)
+    n_segments = n_waypoints - 1
+    # Indices in poses where each waypoint ends
+    pause_indices = [(i+1)*steps_per_segment-1 for i in range(n_segments)]
+    pause_indices.append(len(poses)-1)  # Always pause at the last pose
     # Main Cartesian trajectory
-    for pose in poses:
+    for i, pose in enumerate(poses):
         q = numerical_ik(pose, q_seed)
         traj.append(q.copy())
+        if i in pause_indices:
+            for _ in range(pause_steps - 1):
+                traj.append(q.copy())
         q_seed = q  # Use last solution as next seed for smoothness
 
     # Interpolate from home to first point in joint space
@@ -294,19 +303,27 @@ def build_joint_traj_from_cartesian(home_q, cartesian_waypoints, steps_per_segme
 
 # --- Numerical IK helper (5DOF, roll, pitch, and yaw free) ---
 def numerical_ik(pose, q_seed):
-    x, y, z, roll, pitch = pose
-    # Only constrain x, y, z, and pitch (z_tool_y)
-    target_pose = [x, y, z, 0.0, pitch, 0.0]
+    x, y, z, roll, pitch, yaw = pose
+    # Constrain x, y, z, and full orientation (roll, pitch, yaw)
+    target_pose = [x, y, z, roll, pitch, yaw]
     q_guess = q_seed[:5] if len(q_seed) >= 5 else np.zeros(5)
     pos_weight = 1.0
-    ori_weight = 0.05
-    weights = np.array([pos_weight, pos_weight, pos_weight, 0.0, ori_weight], dtype=float)
+    ori_weight = 0.0
     def residual(q):
-        current_task = np.array(task_func(*q), dtype=float).reshape(5)
-        # Only constrain z_tool_y to match sin(pitch)
-        target_task = np.array([x, y, z, 0.0, np.sin(pitch)], dtype=float)
-        err = current_task - target_task
-        return weights * err
+        pos = np.array(fk_pos_func(*q), dtype=float).reshape(3)
+        R = np.array(fk_rot_func(*q), dtype=float).reshape(3, 3)
+        R_des = rpy_to_R(roll, pitch, yaw)
+        # Position error
+        pos_err = pos - np.array([x, y, z], dtype=float)
+        # Orientation error (rotation vector)
+        R_err = R_des.T @ R
+        angle = np.arccos(np.clip((np.trace(R_err) - 1) / 2, -1.0, 1.0))
+        if angle < 1e-6:
+            rotvec = np.zeros(3)
+        else:
+            skew = (R_err - R_err.T) / (2 * np.sin(angle))
+            rotvec = np.array([skew[2,1], skew[0,2], skew[1,0]]) * angle
+        return np.concatenate([pos_weight * pos_err, ori_weight * rotvec])
     lower = JOINT_LIMITS_RAD[:, 0]
     upper = JOINT_LIMITS_RAD[:, 1]
     result = least_squares(
@@ -322,9 +339,17 @@ def numerical_ik(pose, q_seed):
     q_sol = result.x
     pos, R, z_tool, task = evaluate_solution(q_sol)
     pos_err = np.linalg.norm(pos - np.array([x, y, z], dtype=float))
-    pitch_err = np.abs(z_tool[1] - np.sin(pitch))
-    feasible = (pos_err < 5e-3) and (pitch_err < 5e-2)
-    print(f"[IK DEBUG] pose={pose}, pos_err={pos_err:.5f}, pitch_err={pitch_err:.5f}, feasible={feasible}")
+    R_des = rpy_to_R(roll, pitch, yaw)
+    R_err = R_des.T @ R
+    angle = np.arccos(np.clip((np.trace(R_err) - 1) / 2, -1.0, 1.0))
+    if angle < 1e-6:
+        ori_err = 0.0
+    else:
+        skew = (R_err - R_err.T) / (2 * np.sin(angle))
+        rotvec = np.array([skew[2,1], skew[0,2], skew[1,0]]) * angle
+        ori_err = np.linalg.norm(rotvec)
+    feasible = (pos_err < 5e-3) and (ori_err < 5e-2)
+    print(f"[IK DEBUG] pose={pose}, pos_err={pos_err:.5f}, ori_err={ori_err:.5f}, feasible={feasible}")
     if len(q_seed) == 6:
         q_full = np.zeros(6)
         q_full[:5] = q_sol
@@ -337,16 +362,24 @@ def run_trajectory():
     # Home position matches URDF/sim: 0, 105°, -70°, -60°, 90° (6th is gripper)
     q_home = np.array([0, np.deg2rad(105), np.deg2rad(-70), np.deg2rad(-60), np.deg2rad(90), 0.0])
     # Example Cartesian waypoints: (x, y, z, roll, pitch)
+    # cartesian_waypoints = [
+    #     (0.2, 0.2,    0.2,    0.000,  1.570,  0.650),
+    #     (0.2, 0.1,    0.4,    0.000,  0.000, -1.570),
+    #     (0.0, 0.0,    0.4,    0.000, -0.785,  1.570),
+    #     (0.0, 0.0452, 0.45,  -0.785,  0.000,  3.141),  # Loop back to start
+    #     (0.2, 0.2,    0.2,    0.000,  1.570,  0.650),  # Loop back to start
+    # ]
     cartesian_waypoints = [
-        (0.1, 0.25, 0.15, 0.0, 1.57),
-        (0.1, 0.35, 0.15, 0.0, 1.57),
-        (-0.1, 0.35, 0.15, 0.0, 1.57),
-        (-0.1, 0.25, 0.15, 0.0, 1.57),  # Loop back to start
-        (0.1, 0.25, 0.15, 0.0, 1.57),  # Loop back to start
+        (0.1, 0.25, 0.15, 0.0, 1.57, 0.0),
+        (0.1, 0.35, 0.15, 0.0, 1.57, 0.0),
+        (-0.1, 0.35, 0.15, 0.0, 1.57, 0.0),
+        (-0.1, 0.25, 0.15, 0.0, 1.57, 0.0),  # Loop back to start
+        (0.1, 0.25, 0.15, 0.0, 1.57, 0.0),  # Loop back to start
     ]
     dt = 0.04
-    traj = build_joint_traj_from_cartesian(q_home, cartesian_waypoints, steps_per_segment=50)
-    joint_offset = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # Change these values to calibrate real robot offsets
+    traj = build_joint_traj_from_cartesian(q_home, cartesian_waypoints, steps_per_segment=100)
+    joint_offset = np.array([-0.11, 0.11, -0.007, 0.11, -0.11, -0.094])  # Change these values to calibrate real robot offsets
+    joint_offset = np.array([0.00, 0.00, 0.00, 0.0, 0.00, 0.00])
     node = TrajPublisher(traj, dt=dt, joint_offset=joint_offset)
     rclpy.spin(node)
     rclpy.shutdown()
