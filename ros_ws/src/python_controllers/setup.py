@@ -23,9 +23,6 @@ setup(
             'example_pos_traj = python_controllers.example_pos_traj:main',
             'example_vel_traj = python_controllers.example_vel_traj:main',
             'group_pos_traj = python_controllers.group_pos_traj:main',
-            'triangle_draw = python_controllers.triangle_draw:main',
-            'test_ik_pos = python_controllers.test_ik_pos:main',
-            'group_velocity_traj = python_controllers.group_velocity_traj:main',
             'group_vel_traj = python_controllers.group_vel_traj:main',
             'pickup_traj = python_controllers.pickup_traj:main',
             'pickup_traj_vel_control = python_controllers.pickup_traj_vel_control:main',
@@ -33,7 +30,8 @@ setup(
             'square_trajectory_node = python_controllers.square_trajectory_node:main',
             'pick_and_place = python_controllers.pick_and_place:main',
             'ik_pick_and_place = python_controllers.ik_pick_and_place:main',
-            'pick_and_place_copy = python_controllers.pick_and_place_copy:main'
+            'pick_and_place_copy = python_controllers.pick_and_place_copy:main',
+            'publish_traj = python_controllers.publish_traj:main',
         ],
     },
 )
