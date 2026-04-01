@@ -1,0 +1,17 @@
+Code used in competition:
+ik_pick_and_place.py
+
+Code for rectangle drawing:
+publish_traj.py - make sure the cartesian waypoints are set to the second option for the  rectangle, the first option is for the poses. 
+            # cartesian_waypoints = [
+                #     (0.1, 0.25, 0.15, 0.0, 1.57, 0.0),
+                #     (0.1, 0.35, 0.15, 0.0, 1.57, 0.0),
+                #     (-0.1, 0.35, 0.15, 0.0, 1.57, 0.0),
+                #     (-0.1, 0.25, 0.15, 0.0, 1.57, 0.0),  # Loop back to start
+                #     (0.1, 0.25, 0.15, 0.0, 1.57, 0.0),  # Loop back to start
+                # ]
+
+Code for dynamic pick and place (velocity control):
+pickup_traj.py
+
+Code for checking inverse kinematic poses: NumericalIK.py

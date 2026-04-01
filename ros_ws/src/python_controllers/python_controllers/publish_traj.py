@@ -278,7 +278,7 @@ def build_joint_traj_from_cartesian(home_q, cartesian_waypoints, steps_per_segme
     poses = interpolate_cartesian_traj(cartesian_waypoints, steps_per_segment)
     traj = [home_q.copy()]
     q_seed = home_q.copy()
-    pause_steps = 0  # Number of steps to pause at each waypoint (adjust as needed)
+    pause_steps = 100  # Number of steps to pause at each waypoint (adjust as needed)
     n_waypoints = len(cartesian_waypoints)
     n_segments = n_waypoints - 1
     # Indices in poses where each waypoint ends
@@ -307,8 +307,8 @@ def numerical_ik(pose, q_seed):
     # Constrain x, y, z, and full orientation (roll, pitch, yaw)
     target_pose = [x, y, z, roll, pitch, yaw]
     q_guess = q_seed[:5] if len(q_seed) >= 5 else np.zeros(5)
-    pos_weight = 1.0
-    ori_weight = 0.0
+    pos_weight = 0.5
+    ori_weight = 0.5
     def residual(q):
         pos = np.array(fk_pos_func(*q), dtype=float).reshape(3)
         R = np.array(fk_rot_func(*q), dtype=float).reshape(3, 3)
@@ -362,20 +362,20 @@ def run_trajectory():
     # Home position matches URDF/sim: 0, 105°, -70°, -60°, 90° (6th is gripper)
     q_home = np.array([0, np.deg2rad(105), np.deg2rad(-70), np.deg2rad(-60), np.deg2rad(90), 0.0])
     # Example Cartesian waypoints: (x, y, z, roll, pitch)
-    # cartesian_waypoints = [
-    #     (0.2, 0.2,    0.2,    0.000,  1.570,  0.650),
-    #     (0.2, 0.1,    0.4,    0.000,  0.000, -1.570),
-    #     (0.0, 0.0,    0.4,    0.000, -0.785,  1.570),
-    #     (0.0, 0.0452, 0.45,  -0.785,  0.000,  3.141),  # Loop back to start
-    #     (0.2, 0.2,    0.2,    0.000,  1.570,  0.650),  # Loop back to start
-    # ]
     cartesian_waypoints = [
-        (0.1, 0.25, 0.15, 0.0, 1.57, 0.0),
-        (0.1, 0.35, 0.15, 0.0, 1.57, 0.0),
-        (-0.1, 0.35, 0.15, 0.0, 1.57, 0.0),
-        (-0.1, 0.25, 0.15, 0.0, 1.57, 0.0),  # Loop back to start
-        (0.1, 0.25, 0.15, 0.0, 1.57, 0.0),  # Loop back to start
+        (0.2, 0.2,    0.2,    0.000,  1.570,  0.650),
+        (0.2, 0.1,    0.4,    0.000,  0.000, -1.570),
+        (0.0, 0.0,    0.4,    0.000, -0.785,  1.570),
+        (0.0, 0.0452, 0.45,  -0.785,  0.000,  3.141),  # Loop back to start
+        (0.2, 0.2,    0.2,    0.000,  1.570,  0.650),  # Loop back to start
     ]
+    # cartesian_waypoints = [
+    #     (0.1, 0.25, 0.15, 0.0, 1.57, 0.0),
+    #     (0.1, 0.35, 0.15, 0.0, 1.57, 0.0),
+    #     (-0.1, 0.35, 0.15, 0.0, 1.57, 0.0),
+    #     (-0.1, 0.25, 0.15, 0.0, 1.57, 0.0),  # Loop back to start
+    #     (0.1, 0.25, 0.15, 0.0, 1.57, 0.0),  # Loop back to start
+    # ]
     dt = 0.04
     traj = build_joint_traj_from_cartesian(q_home, cartesian_waypoints, steps_per_segment=100)
     joint_offset = np.array([-0.11, 0.11, -0.007, 0.11, -0.11, -0.094])  # Change these values to calibrate real robot offsets

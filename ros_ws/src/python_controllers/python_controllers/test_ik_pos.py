@@ -20,11 +20,9 @@ class VisualizePoses(Node):
         # The 5 calculated poses from the IK solver. 
         # The 6th value (0.0) is added to match the array size of your original script (likely for the gripper).
         self.poses = [
-            [-0.9121, -1.1054,  0.4748,  2.2006,  0.0000, 0.0], # Pose I   (Reachable)
-            [-1.3034,  0.0966,  1.3270, -1.4236,  0.0000, 0.0], # Pose II  (Unreachable / Stretched)
-            [-3.1416,  0.4556,  1.3270, -2.5676,  0.0000, 0.0], # Pose III (Unreachable / Stretched)
-            [0.0000, -0.511, -1.210,  -1.421,  -3.14, 0.0], # Pose IV  (Reachable)
-            [-1.5708,  0.7079,  1.3270, -2.0349, -0.7850, 0.0]  # Pose V   (Unreachable / Stretched)
+            [-1.30336, -0.18202,  0.4463,   1.30651,  0.0, 0.0], # Pose I   (Reachable)
+            [0.0006, -0.18, 1.58,  0.96,  0.0, 0.0], # Pose V
+            [0.0006,  0.23,  0.82, 1.31, 0.0, 0.0]  # Pose V   
         ]
 
         self.pose_labels = ["Pose I (Reachable)", "Pose II (Unreachable limit)", 
